@@ -1,9 +1,27 @@
 #!/bin/bash
 set -e
 
+# Проверяем, установлен ли Go
+if ! command -v go &> /dev/null; then
+    echo "Go не найден, устанавливаю в /usr/local..."
+    wget -q --show-progress https://go.dev/dl/go1.22.5.linux-amd64.tar.gz
+    tar -C /usr/local -xzf go1.22.5.linux-amd64.tar.gz
+    # Добавляем в PATH для текущей сессии
+    export PATH=$PATH:/usr/local/go/bin
+    # Прописываем в .bashrc для будущих сессий (если файл существует)
+    if [ -f ~/.bashrc ]; then
+        echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+    fi
+    echo "Go установлен: $(go version)"
+else
+    echo "Go уже установлен: $(go version)"
+fi
+
+# Создаём временную директорию
 WORKDIR=$(mktemp -d)
 cd "$WORKDIR"
 
+# Пишем main.go
 cat > main.go << 'EOF'
 package main
 
@@ -171,6 +189,8 @@ func randInt(min, max int) (int, error) {
 }
 EOF
 
+# Инициализируем go модуль и запускаем
 go mod init attack 2>/dev/null || true
 go mod tidy 2>/dev/null || true
+echo "Запуск атаки с параметрами: $@"
 go run main.go "$@"
